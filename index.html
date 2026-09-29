@@ -236,6 +236,18 @@
     padding:16px 28px; border-radius:999px;
   }
   .mail-link:hover{filter:brightness(0.95);}
+
+  .inquiry-form{display:flex; flex-direction:column; gap:14px; margin-top:28px; max-width:460px;}
+  .inquiry-form input, .inquiry-form textarea{
+    font-family:'Inter',sans-serif; font-size:1rem; padding:13px 16px;
+    border:1.5px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);
+    resize:vertical;
+  }
+  .inquiry-form input:focus, .inquiry-form textarea:focus{outline:2px solid var(--magenta); outline-offset:1px;}
+  .inquiry-form .btn-solid{border:none; cursor:pointer; align-self:flex-start;}
+  .inq-status{margin:0; font-size:0.9rem;}
+  .inq-status.ok{color:#1a7a3d;}
+  .inq-status.err{color:#c22b2b;}
   .contact-note{margin-top:24px; font-size:0.92rem; color:var(--ink-faint);}
 
   footer{border-top:1px solid var(--line); padding:32px; text-align:center; color:var(--ink-faint); font-size:0.88rem;}
@@ -416,8 +428,16 @@
           <span class="eyebrow">Reviews &amp; suggestions</span>
           <h1>Get in touch</h1>
           <p>This inbox is for reviews and suggestions about NutriNext — what's working, what isn't, and what you'd want to see next.</p>
-          <a class="mail-link" href="mailto:nutrinext.support@gmail.com">nutrinext.support@gmail.com</a>
-          <p class="contact-note">We read every message, though replies may take a little while.</p>
+
+          <form id="inquiryForm" class="inquiry-form">
+            <input type="text" id="inqName" placeholder="Your name" required>
+            <input type="email" id="inqEmail" placeholder="Your email" required>
+            <textarea id="inqMessage" placeholder="Your message" rows="4" required></textarea>
+            <button type="submit" class="btn-solid" id="inqSubmitBtn">Send message</button>
+            <p id="inqStatus" class="inq-status"></p>
+          </form>
+
+          <p class="contact-note">Prefer email? Write to <a href="mailto:nutrinext.support@gmail.com">nutrinext.support@gmail.com</a> — we read every message, though replies may take a little while.</p>
         </div>
       </div>
     </div>
@@ -426,6 +446,40 @@
 
 <footer>NutriNext — Eat Right. Live Bright.</footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = "https://ohqzelnfvrouivdenfvo.supabase.co";
+  const SUPABASE_ANON_KEY = "b_publishable_zDq4sV-m37K49ZC5qIXcTg_BnWneljq";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const inquiryForm = document.getElementById('inquiryForm');
+  if(inquiryForm){
+    inquiryForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const btn = document.getElementById('inqSubmitBtn');
+      const status = document.getElementById('inqStatus');
+      const name = document.getElementById('inqName').value.trim();
+      const email = document.getElementById('inqEmail').value.trim();
+      const message = document.getElementById('inqMessage').value.trim();
+
+      btn.disabled = true; btn.textContent = 'Sending...';
+      status.textContent = ''; status.className = 'inq-status';
+
+      const { error } = await sb.from('inquiries').insert([{ name, email, message }]);
+
+      if(error){
+        status.textContent = "Something went wrong — please try again or email us directly.";
+        status.className = 'inq-status err';
+        btn.disabled = false; btn.textContent = 'Send message';
+      }else{
+        status.textContent = "Thanks — your message has been sent!";
+        status.className = 'inq-status ok';
+        inquiryForm.reset();
+        btn.disabled = false; btn.textContent = 'Send message';
+      }
+    });
+  }
+</script>
 <script>
   const buttons = document.querySelectorAll('nav.pages button');
   const pages = document.querySelectorAll('section.page');
