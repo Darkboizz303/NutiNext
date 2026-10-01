@@ -124,13 +124,26 @@
   let allInquiries = [];
   let currentFilter = 'all';
 
+  async function isAdmin(){
+    const { data, error } = await sb.rpc('is_admin');
+    return !error && data === true;
+  }
+
   async function checkSession(){
     const { data } = await sb.auth.getSession();
-    if(data.session){ showDashboard(); } else { showLogin(); }
+    if(data.session && await isAdmin()){ showDashboard(); }
+    else {
+      if(data.session) await sb.auth.signOut();
+      showLogin();
+    }
   }
 
   function showLogin(){ loginScreen.style.display = 'flex'; dashScreen.style.display = 'none'; }
   function showDashboard(){ loginScreen.style.display = 'none'; dashScreen.style.display = 'block'; loadInquiries(); }
+
+  document.getElementById('loginPassword').addEventListener('keydown', e=>{
+    if(e.key === 'Enter') loginBtn.click();
+  });
 
   loginBtn.addEventListener('click', async ()=>{
     loginError.textContent = '';
@@ -138,9 +151,22 @@
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     const { error } = await sb.auth.signInWithPassword({ email, password });
+    if(error){
+      loginBtn.disabled = false; loginBtn.textContent = 'Log in';
+      loginError.textContent = error.message; return;
+    }
+    if(!(await isAdmin())){
+      await sb.auth.signOut();
+      loginBtn.disabled = false; loginBtn.textContent = 'Log in';
+      loginError.textContent = "This account isn't an admin.";
+      return;
+    }
     loginBtn.disabled = false; loginBtn.textContent = 'Log in';
-    if(error){ loginError.textContent = error.message; return; }
     showDashboard();
+  });
+
+  ['loginEmail','loginPassword'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') loginBtn.click(); });
   });
 
   document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -165,9 +191,14 @@
     renderList();
   }
 
+  const EMPTY_HINT = 'No inquiries here yet. If you know messages were sent, this account is probably not allowed to read them — run supabase-setup.sql and make sure you are signed in with the admin email.';
+
   function renderList(){
     const items = currentFilter === 'all' ? allInquiries : allInquiries.filter(i => (i.status || 'new') === currentFilter);
-    if(items.length === 0){ inqList.innerHTML = '<p class="empty-note">No inquiries here yet.</p>'; return; }
+    if(items.length === 0){
+      inqList.innerHTML = '<p class="empty-note">' + (currentFilter === 'all' ? EMPTY_HINT : 'Nothing in this filter.') + '</p>';
+      return;
+    }
     inqList.innerHTML = '';
     items.forEach(inq=>{
       const card = document.createElement('div');
@@ -183,12 +214,12 @@
         </div>
         <div class="inq-msg">${escapeHtml(inq.message||'')}</div>
         <div class="inq-actions">
-          <select data-id="${inq.id}" class="statusSelect">
-            <option value="new" ${inq.status==='new'?'selected':''}>New</option>
+          <select data-id="${escapeHtml(String(inq.id))}" class="statusSelect">
+            <option value="new" ${(inq.status||'new')==='new'?'selected':''}>New</option>
             <option value="read" ${inq.status==='read'?'selected':''}>Read</option>
             <option value="replied" ${inq.status==='replied'?'selected':''}>Replied</option>
           </select>
-          <button class="del" data-id="${inq.id}">Delete</button>
+          <button class="del" data-id="${escapeHtml(String(inq.id))}">Delete</button>
         </div>
       `;
       inqList.appendChild(card);
@@ -197,17 +228,29 @@
     document.querySelectorAll('.statusSelect').forEach(sel=>{
       sel.addEventListener('change', async ()=>{
         const id = sel.dataset.id;
-        await sb.from('inquiries').update({ status: sel.value }).eq('id', id);
-        const item = allInquiries.find(i=>i.id === id);
+        const item = allInquiries.find(i=>String(i.id) === id);
+        const previous = item ? (item.status || 'new') : 'new';
+        // .select() makes Supabase return the changed rows, so a blocked update is detectable
+        const { data, error } = await sb.from('inquiries').update({ status: sel.value }).eq('id', id).select();
+        if(error || !data || data.length === 0){
+          alert('Could not update status: ' + (error ? error.message : 'not allowed by database policy (see supabase-setup.sql).'));
+          sel.value = previous;
+          return;
+        }
         if(item) item.status = sel.value;
+        if(currentFilter !== 'all') renderList();
       });
     });
     document.querySelectorAll('.del').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         if(!confirm('Delete this inquiry?')) return;
         const id = btn.dataset.id;
-        await sb.from('inquiries').delete().eq('id', id);
-        allInquiries = allInquiries.filter(i=>i.id !== id);
+        const { data, error } = await sb.from('inquiries').delete().eq('id', id).select();
+        if(error || !data || data.length === 0){
+          alert('Could not delete: ' + (error ? error.message : 'not allowed by database policy (see supabase-setup.sql).'));
+          return;
+        }
+        allInquiries = allInquiries.filter(i=>String(i.id) !== id);
         renderList();
       });
     });
@@ -218,6 +261,11 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // keep the screen in sync if the session expires or the user signs out elsewhere
+  sb.auth.onAuthStateChange((event)=>{
+    if(event === 'SIGNED_OUT') showLogin();
+  });
 
   checkSession();
 </script>
