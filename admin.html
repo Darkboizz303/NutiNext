@@ -159,7 +159,7 @@
     if(!(await isAdmin())){
       await sb.auth.signOut();
       loginBtn.disabled = false; loginBtn.textContent = 'Log in';
-      loginError.textContent = "This account isn't an admin.";
+      if(!loginError.textContent) loginError.textContent = "This account isn't an admin.";
       return;
     }
     loginBtn.disabled = false; loginBtn.textContent = 'Log in';
