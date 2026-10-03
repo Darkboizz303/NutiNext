@@ -125,9 +125,10 @@
   let currentFilter = 'all';
 
   async function isAdmin(){
-    const { data, error } = await sb.rpc('is_admin');
-    return !error && data === true;
-  }
+  const { data, error } = await sb.rpc('is_admin');
+  if(error){ loginError.textContent = 'Setup problem: ' + error.message; return false; }
+  return data === true;
+}
 
   async function checkSession(){
     const { data } = await sb.auth.getSession();
